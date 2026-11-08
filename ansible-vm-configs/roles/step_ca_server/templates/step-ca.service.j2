@@ -1,0 +1,23 @@
+[Unit]
+Description=Smallstep Certificate Authority
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=step
+Group=step
+Environment=STEPPATH={{ step_ca_data_dir }}
+WorkingDirectory={{ step_ca_data_dir }}
+ExecStart=/usr/bin/step-ca --password-file={{ step_ca_password_file }} {{ step_ca_config_file }}
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ step_ca_data_dir }}
+ReadOnlyPaths={{ step_ca_secrets_dir }}
+
+[Install]
+WantedBy=multi-user.target

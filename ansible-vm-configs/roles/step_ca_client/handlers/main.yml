@@ -1,0 +1,9 @@
+---
+- name: Reload Smallstep client systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Reload Nginx systemd
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: reloaded

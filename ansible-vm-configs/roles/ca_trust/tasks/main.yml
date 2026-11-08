@@ -1,0 +1,11 @@
+---
+- name: Install the lab CA root certificate into the system trust store
+  ansible.builtin.copy:
+    content: >-
+      {{ hostvars['lab-dns']['lab_ca_root_certificate']['content']
+      | b64decode }}
+    dest: "{{ lab_ca_root_cert_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Update system CA trust

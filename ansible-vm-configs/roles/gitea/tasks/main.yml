@@ -1,0 +1,129 @@
+
+
+- name: Install Gitea runtime dependencies
+  ansible.builtin.apt:
+    name:
+      - git
+      - sqlite3
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create Gitea service account
+  ansible.builtin.user:
+    name: git
+    comment: Gitea service account
+    home: /home/git
+    shell: /bin/bash
+    system: true
+    create_home: true
+
+- name: Create Gitea configuration and data directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode | default(omit) }}"
+    recurse: "{{ item.recurse | default(false) }}"
+  loop:
+    - path: /etc/gitea
+      owner: root
+      group: git
+      mode: "0750"
+    - path: "{{ gitea_data_dir }}"
+      owner: git
+      group: git
+      mode: "0750"
+    - path: "{{ gitea_data_dir }}/gitea"
+      owner: git
+      group: git
+      mode: "0750"
+    - path: "{{ gitea_data_dir }}/git/repositories"
+      owner: git
+      group: git
+      mode: "0750"
+    - path: "{{ gitea_data_dir }}/gitea/log"
+      owner: git
+      group: git
+      mode: "0750"
+
+- name: Create initial Gitea configuration
+  ansible.builtin.template:
+    src: app.ini.j2
+    dest: /etc/gitea/app.ini
+    owner: root
+    group: git
+    mode: "0640"
+    force: false
+
+- name: Configure Gitea public URL and listener
+  ansible.builtin.lineinfile:
+    path: /etc/gitea/app.ini
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    insertafter: "{{ item.insertafter }}"
+  loop:
+    - regexp: '^DOMAIN\s*='
+      line: "DOMAIN = {{ gitea_domain }}"
+      insertafter: '^\[server\]'
+    - regexp: '^ROOT_URL\s*='
+      line: "ROOT_URL = {{ gitea_root_url }}"
+      insertafter: '^\[server\]'
+    - regexp: '^HTTP_ADDR\s*='
+      line: "HTTP_ADDR = {{ gitea_http_addr }}"
+      insertafter: '^\[server\]'
+    - regexp: '^HTTP_PORT\s*='
+      line: "HTTP_PORT = {{ gitea_http_port }}"
+      insertafter: '^\[server\]'
+    - regexp: '^SSH_DOMAIN\s*='
+      line: "SSH_DOMAIN = {{ gitea_domain }}"
+      insertafter: '^\[server\]'
+    - regexp: '^SSH_PORT\s*='
+      line: "SSH_PORT = {{ gitea_ssh_port }}"
+      insertafter: '^\[server\]'
+    - regexp: '^SSH_LISTEN_PORT\s*='
+      line: "SSH_LISTEN_PORT = {{ gitea_ssh_port }}"
+      insertafter: '^\[server\]'
+    - regexp: '^START_SSH_SERVER\s*='
+      line: "START_SSH_SERVER = true"
+      insertafter: '^\[server\]'
+    - regexp: '^PATH\s*='
+      line: "PATH = {{ gitea_data_dir }}/gitea/gitea.db"
+      insertafter: '^\[database\]'
+    - regexp: '^ROOT\s*='
+      line: "ROOT = {{ gitea_data_dir }}/git/repositories"
+      insertafter: '^\[repository\]'
+  notify: Restart Gitea
+
+- name: Download Gitea release binary
+  ansible.builtin.get_url:
+    url: >-
+      https://github.com/go-gitea/gitea/releases/download/v{{ gitea_version
+      }}/gitea-{{ gitea_version }}-linux-{{ gitea_arch }}
+    dest: /usr/local/bin/gitea
+    owner: root
+    group: root
+    mode: "0755"
+    checksum: >-
+      sha256:https://github.com/go-gitea/gitea/releases/download/v{{
+      gitea_version }}/gitea-{{ gitea_version }}-linux-{{ gitea_arch }}.sha256
+  notify: Restart Gitea
+
+- name: Install Gitea systemd unit
+  ansible.builtin.template:
+    src: gitea.service.j2
+    dest: /etc/systemd/system/gitea.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload Gitea systemd
+    - Restart Gitea
+
+- name: Enable and start Gitea
+  ansible.builtin.systemd_service:
+    name: gitea
+    enabled: true
+    state: started
+    daemon_reload: true

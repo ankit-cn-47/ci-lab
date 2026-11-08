@@ -1,0 +1,9 @@
+---
+- name: Reload Smallstep systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart Smallstep CA
+  ansible.builtin.systemd_service:
+    name: step-ca
+    state: restarted

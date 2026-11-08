@@ -1,0 +1,158 @@
+---
+- name: Require a non-placeholder Technitium admin password
+  ansible.builtin.assert:
+    that:
+      - technitium_admin_password is defined
+      - technitium_admin_password | length >= 24
+      - "'replace-with-' not in technitium_admin_password"
+    fail_msg: >-
+      Set technitium_admin_password in the encrypted group_vars/all/vault.yml
+      file before deploying DNS.
+
+- name: Install Technitium native Linux installer
+  ansible.builtin.get_url:
+    url: "{{ technitium_install_script_url }}"
+    dest: "{{ technitium_install_script }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install Technitium DNS as a native systemd service
+  ansible.builtin.command:
+    argv:
+      - bash
+      - "{{ technitium_install_script }}"
+  args:
+    creates: /etc/systemd/system/dns.service
+  register: technitium_install
+  changed_when: technitium_install.rc == 0
+
+- name: Enable and start Technitium DNS
+  ansible.builtin.systemd_service:
+    name: dns
+    enabled: true
+    state: started
+
+- name: Wait for Technitium DNS API
+  ansible.builtin.uri:
+    url: "{{ technitium_api_url }}/api/status"
+    method: GET
+    return_content: true
+    status_code: 200
+  register: technitium_api_status
+  retries: 30
+  delay: 2
+  until: technitium_api_status.json.status | default('') == 'ok'
+
+- name: Authenticate to Technitium DNS API with configured password
+  ansible.builtin.uri:
+    url: >-
+      {{ technitium_api_url }}/api/user/login?user={{ technitium_api_user
+      | urlencode }}&pass={{ technitium_admin_password | urlencode
+      }}&includeInfo=true
+    method: GET
+    return_content: true
+    status_code: 200
+  register: technitium_login
+  failed_when: false
+  no_log: true
+
+- name: Authenticate with Technitium's initial default password
+  ansible.builtin.uri:
+    url: >-
+      {{ technitium_api_url }}/api/user/login?user={{ technitium_api_user
+      | urlencode }}&pass=admin&includeInfo=true
+    method: GET
+    return_content: true
+    status_code: 200
+  register: technitium_default_login
+  when: technitium_login.json.status | default('') != 'ok'
+  failed_when: false
+  no_log: true
+
+- name: Verify Technitium admin credentials
+  ansible.builtin.assert:
+    that:
+      - >-
+        technitium_login.json.status | default('') == 'ok'
+        or technitium_default_login.json.status | default('') == 'ok'
+    fail_msg: >-
+      Technitium admin login failed with both the configured vault password
+      and the installer's default password. Verify the vault value against
+      the admin account on lab-dns.
+
+- name: Set Technitium admin password from Ansible Vault
+  ansible.builtin.uri:
+    url: >-
+      {{ technitium_api_url }}/api/user/changePassword?pass=admin&newPass={{
+      technitium_admin_password | urlencode }}
+    method: POST
+    headers:
+      Authorization: "Bearer {{ technitium_default_login.json.token }}"
+    return_content: true
+    status_code: 200
+  register: technitium_password_change
+  when: technitium_login.json.status | default('') != 'ok'
+  changed_when: technitium_password_change.json.status == 'ok'
+  failed_when: technitium_password_change.json.status != 'ok'
+  no_log: true
+
+- name: Authenticate to Technitium DNS API with managed credentials
+  ansible.builtin.uri:
+    url: >-
+      {{ technitium_api_url }}/api/user/login?user={{ technitium_api_user
+      | urlencode }}&pass={{ technitium_admin_password | urlencode
+      }}&includeInfo=true
+    method: GET
+    return_content: true
+    status_code: 200
+  register: technitium_managed_login
+  until: technitium_managed_login.json.status | default('') == 'ok'
+  retries: 5
+  delay: 1
+  no_log: true
+
+- name: List Technitium authoritative zones
+  ansible.builtin.uri:
+    url: "{{ technitium_api_url }}/api/zones/list?pageNumber=1&zonesPerPage=100"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ technitium_managed_login.json.token }}"
+    return_content: true
+    status_code: 200
+  register: technitium_zone_list
+  no_log: true
+
+- name: Create the lab DNS zone
+  ansible.builtin.uri:
+    url: >-
+      {{ technitium_api_url }}/api/zones/create?zone={{ lab_domain | urlencode
+      }}&type=Primary
+    method: POST
+    headers:
+      Authorization: "Bearer {{ technitium_managed_login.json.token }}"
+    return_content: true
+    status_code: 200
+  when: >-
+    lab_domain not in
+    (technitium_zone_list.json.response.zones | map(attribute='name') | list)
+  register: technitium_zone_create
+  changed_when: technitium_zone_create.json.status == 'ok'
+  no_log: true
+
+- name: Configure lab DNS A records
+  ansible.builtin.uri:
+    url: >-
+      {{ technitium_api_url }}/api/zones/records/add?domain={{
+      item.name | urlencode }}&zone={{ lab_domain | urlencode
+      }}&type=A&ipAddress={{ item.ip | urlencode }}&overwrite=true&ptr=false
+    method: POST
+    headers:
+      Authorization: "Bearer {{ technitium_managed_login.json.token }}"
+    return_content: true
+    status_code: 200
+  loop: "{{ lab_dns_records }}"
+  register: technitium_record_result
+  changed_when: false
+  failed_when: technitium_record_result.json.status != 'ok'
+  no_log: true

@@ -1,0 +1,91 @@
+libvirt:
+  uri: qemu:///system
+  storage_pool: default
+  # Path to the Ubuntu cloud image; update this if you save it elsewhere.
+  base_image: /var/lib/libvirt/images/ubuntu-24.04-server-cloudimg-amd64.img
+
+network:
+  name: devops-lab-network
+  subnet: 10.10.10.0/24
+  gateway: 10.10.10.1
+  dhcp_start: 10.10.10.100
+  dhcp_end: 10.10.10.200
+  dns_domain: lab.home.arpa
+  dns_forwarder: 10.10.10.2
+
+defaults:
+  os: ubuntu-24.04
+  autostart: true
+  username: lab
+  disk_format: qcow2
+
+vms:
+  - name: lab-dns
+    vcpus: 2
+    memory_gb: 2
+    disk_gb: 30
+    ip: 10.10.10.2
+    cloud_init:
+      hostname: lab-dns
+      username: lab
+      ssh_authorized_keys_file: ~/.ssh/id_ed25519.pub
+      packages:
+        - qemu-guest-agent
+      runcmd:
+        - systemctl enable --now qemu-guest-agent
+
+  - name: lab-ci
+    vcpus: 4
+    memory_gb: 5
+    disk_gb: 80
+    ip: 10.10.10.10
+    cloud_init:
+      hostname: lab-ci
+      username: lab
+      ssh_authorized_keys_file: ~/.ssh/id_ed25519.pub
+      packages:
+        - qemu-guest-agent
+      runcmd:
+        - systemctl enable --now qemu-guest-agent
+
+  - name: lab-sonarqube
+    vcpus: 4
+    memory_gb: 8
+    disk_gb: 100
+    ip: 10.10.10.40
+    cloud_init:
+      hostname: lab-sonarqube
+      username: lab
+      ssh_authorized_keys_file: ~/.ssh/id_ed25519.pub
+      packages:
+        - qemu-guest-agent
+      runcmd:
+        - systemctl enable --now qemu-guest-agent
+
+  - name: lab-harbor
+    vcpus: 4
+    memory_gb: 6
+    disk_gb: 200
+    ip: 10.10.10.20
+    cloud_init:
+      hostname: lab-harbor
+      username: lab
+      ssh_authorized_keys_file: ~/.ssh/id_ed25519.pub
+      packages:
+        - qemu-guest-agent
+      runcmd:
+        - systemctl enable --now qemu-guest-agent
+
+  - name: lab-observability
+    vcpus: 4
+    memory_gb: 7
+    disk_gb: 200
+    ip: 10.10.10.30
+    cloud_init:
+      hostname: lab-observability
+      username: lab
+      ssh_authorized_keys_file: ~/.ssh/id_ed25519.pub
+      packages:
+        - qemu-guest-agent
+      runcmd:
+        - systemctl enable --now qemu-guest-agent

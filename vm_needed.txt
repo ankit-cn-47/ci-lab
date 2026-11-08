@@ -1,0 +1,19 @@
+container registry - harbour
+
+ci vm - 
+Gitea
+Woodpecker Server
+Woodpecker Agent
+Docker
+Trivy
+Semgrep
+Gitleaks
+Syft/Grype 
+
+observaility vm
+Prometheus
+Grafana
+Loki
+Tempo
+OpenTelemetry Collector
+Alertmanager

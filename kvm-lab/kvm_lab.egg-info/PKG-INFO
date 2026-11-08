@@ -1,0 +1,348 @@
+Metadata-Version: 2.4
+Name: kvm-lab
+Version: 0.1.0
+Summary: Declarative libvirt/KVM VM provisioner using YAML or JSON
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: libvirt-python
+Requires-Dist: PyYAML<7,>=6.0
+
+# kvm-lab
+
+A small declarative Python tool for provisioning local libvirt/KVM VMs from YAML or JSON.
+
+It creates:
+
+- libvirt VMs
+- thin/dynamic qcow2 disks using a base cloud image as a backing file
+- a libvirt NAT network
+- cloud-init NoCloud seed ISOs
+- configurable vCPU/RAM/disk/name/IP
+- VM autostart
+- idempotent `apply`
+- `plan`, `validate`, `status`, and `destroy`
+
+The intended use is a local enterprise/platform-engineering lab on Linux/Zorin OS.
+
+## 1. Host prerequisites
+
+On Ubuntu/Zorin-like systems:
+
+```bash
+sudo apt update
+sudo apt install -y \
+  qemu-kvm \
+  libvirt-daemon-system \
+  libvirt-clients \
+  libvirt-dev \
+  build-essential \
+  pkg-config \
+  virt-manager \
+  qemu-utils \
+  cloud-image-utils \
+  python3-pip \
+  python3-venv
+```
+
+Install `uv` if it is not already installed:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then verify:
+
+```bash
+uv --version
+```
+
+Enable libvirt:
+
+```bash
+sudo systemctl enable --now libvirtd
+```
+
+Add your user to the libvirt group:
+
+```bash
+sudo usermod -aG libvirt "$USER"
+```
+
+Log out/in afterwards.
+
+Verify:
+
+```bash
+virsh -c qemu:///system list --all
+```
+
+## 2. Prepare the Ubuntu cloud image
+
+This tool creates VMs from an Ubuntu cloud image. The Ubuntu Server installer ISO
+(`ubuntu-22.04.3-live-server-amd64.iso`) is not used by this workflow.
+
+Download the Ubuntu 24.04 cloud image:
+
+```text
+/var/lib/libvirt/images/ubuntu-24.04-server-cloudimg-amd64.img
+```
+
+Example:
+
+```bash
+sudo wget -O /var/lib/libvirt/images/ubuntu-24.04-server-cloudimg-amd64.img \
+  https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+```
+
+Check it:
+
+```bash
+qemu-img info /var/lib/libvirt/images/ubuntu-24.04-server-cloudimg-amd64.img
+```
+
+The cloud-image path is configurable in the spec under `libvirt.base_image`.
+Both `examples/lab.yaml` and `examples/lab.json` include this setting. If you
+save the image elsewhere, update that value to its path; `~` is expanded to
+your home directory. For example:
+
+```yaml
+libvirt:
+  base_image: ~/images/noble-server-cloudimg-amd64.img
+```
+
+## 3. Create the Python environment
+
+```bash
+git clone <your-repository>
+cd kvm-lab
+
+uv sync
+source .venv/bin/activate
+```
+
+`uv sync` installs both the `libvirt-python` binding and PyYAML declared in `pyproject.toml`. On Debian/Ubuntu/Zorin, the `libvirt-dev`, `build-essential`, and `pkg-config` packages installed above provide the headers and build tools needed for the Python binding.
+
+## 4. Validate
+
+```bash
+uv run vmctl validate examples/lab.yaml
+```
+
+Expected:
+
+```text
+Configuration is valid.
+```
+
+## 5. Plan
+
+```bash
+uv run vmctl plan examples/lab.yaml
+```
+
+This does not create anything.
+
+## 6. Apply
+
+Because the default libvirt system connection and storage pool normally require elevated permissions:
+
+```bash
+sudo -E uv run vmctl apply examples/lab.yaml
+```
+
+The tool creates:
+
+```text
+lab-network
+lab-ci.qcow2
+lab-ci-seed.iso
+lab-harbor.qcow2
+lab-harbor-seed.iso
+lab-observability.qcow2
+lab-observability-seed.iso
+```
+
+The qcow2 disks use the configured Ubuntu image as a backing file. The logical disk capacity can be 80/200 GB without consuming the full capacity immediately.
+
+## 7. Check status
+
+```bash
+virsh -c qemu:///system list --all
+```
+
+or:
+
+```bash
+uv run vmctl status
+```
+
+## 8. Destroy
+
+This removes the VMs, their generated qcow2 disks and the lab network:
+
+```bash
+sudo -E uv run vmctl destroy examples/lab.yaml
+```
+
+Use `--yes` to skip the confirmation:
+
+```bash
+sudo -E uv run vmctl destroy examples/lab.yaml --yes
+```
+
+## Configuration
+
+### VM
+
+```yaml
+- name: lab-example
+  vcpus: 4
+  memory_gb: 6
+  disk_gb: 100
+  ip: 10.10.10.40
+  autostart: true
+```
+
+### Cloud-init
+
+```yaml
+cloud_init:
+  hostname: lab-example
+  username: lab
+  packages:
+    - qemu-guest-agent
+    - docker.io
+  runcmd:
+    - systemctl enable --now qemu-guest-agent
+    - systemctl enable --now docker
+```
+
+Supported cloud-init fields in v1:
+
+- `hostname`
+- `username`
+- `password`
+- `ssh_authorized_keys`
+- `ssh_authorized_keys_file`
+- `packages`
+- `write_files`
+- `runcmd`
+
+For security, prefer SSH keys over passwords.
+
+Example:
+
+```yaml
+cloud_init:
+  username: lab
+  ssh_authorized_keys_file: ~/.ssh/id_ed25519.pub
+```
+
+`ssh_authorized_keys_file` reads the public-key text from the specified file
+when generating the cloud-init seed. The example uses your local
+`~/.ssh/id_ed25519.pub`; make sure this file exists for the user running
+`vmctl` (including when using `sudo -E`). Keep the private key
+`~/.ssh/id_ed25519` on your client and never put it in the VM configuration.
+
+## Networking
+
+The default configuration creates a libvirt NAT network:
+
+```text
+10.10.10.0/24
+```
+
+with:
+
+```text
+gateway:    10.10.10.1
+DHCP range: 10.10.10.100-10.10.10.200
+```
+
+The example configures these addresses:
+
+```text
+CI:             10.10.10.10
+Harbor:         10.10.10.20
+Observability:  10.10.10.30
+```
+
+During `vmctl apply`, each VM with an `ip` gets a stable MAC address and a
+matching libvirt DHCP reservation. The reservation is applied to both the
+live network and its persistent definition when the network already exists,
+so rerunning `apply` reconciles the configured VM addresses without restarting
+the network. VMs continue to use DHCP; Ubuntu receives the reserved address
+from libvirt.
+
+Changing a VM's configured IP updates its reservation. Reservations for VMs
+removed from the spec are not automatically deleted, so review the libvirt
+network definition if you remove VMs from the configuration.
+
+Run `uv run vmctl apply examples/lab.yaml` to create or update the network and
+VMs. Existing VMs keep their current network MAC address so reservations match
+their interfaces; newly created VMs receive a stable generated MAC address.
+
+## Architecture
+
+The intended lab architecture is:
+
+```text
+                         Zorin OS
+                            |
+                         libvirt
+                            |
+                   lab-network 10.10.10.0/24
+                            |
+          +-----------------+-----------------+
+          |                 |                 |
+       CI VM            Harbor VM       Observability VM
+       10.10.10.10      10.10.10.20       10.10.10.30
+          |                 |                 |
+       Gitea/            Registry          Prometheus
+       Woodpecker                         Grafana
+       Trivy                             Loki
+       Semgrep                           Tempo
+       Gitleaks                          OTel
+          |
+          +-------------------+
+                              |
+                            Kind
+                       Kubernetes cluster
+                              |
+                     Astronomy Shop
+                       Argo CD
+                       Security
+                      AI debugger
+```
+
+This separation is intentional: CI, registry and observability represent shared enterprise platform services, while Kind represents an application environment.
+
+## Safety notes
+
+- Do not expose libvirt/KVM management ports to the Internet.
+- Do not put passwords in a committed YAML file.
+- Use SSH keys for cloud-init.
+- The default network is NATed and is suitable for a local lab.
+- The tool does not modify your existing VMs unless their names collide with the requested names.
+- `destroy` deletes generated VM disks, so review the configuration before running it.
+
+## Roadmap
+
+Potential v2 improvements:
+
+1. Real libvirt DHCP reservations for requested static IPs.
+2. Multiple networks per VM.
+3. Separate management/application networks.
+4. VLAN support.
+5. Cloud-init network configuration.
+6. VM cloning from arbitrary base images.
+7. CPU pinning/NUMA configuration.
+8. Memory ballooning.
+9. Secure boot/TPM options.
+10. Terraform-like state.
+11. `diff` and reconciliation.
+12. SSH readiness checks.
+13. Ansible bootstrap hooks.
+14. Kubeadm cluster provisioning.
+15. Automated DNS records.
+16. Virtual router/firewall VM for network-failure experiments.

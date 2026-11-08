@@ -1,0 +1,9 @@
+---
+step_ca_provisioner_name: lab-ansible
+step_ca_provisioner_password_file: /etc/step-ca/provisioner-password
+step_ca_renew_exec: /bin/systemctl reload nginx
+step_ca_certificates:
+  - name: gitea
+    domain: "{{ gitea_domain }}"
+  - name: woodpecker
+    domain: "{{ woodpecker_domain }}"

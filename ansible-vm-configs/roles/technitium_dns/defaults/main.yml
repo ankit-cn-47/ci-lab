@@ -1,0 +1,6 @@
+---
+technitium_api_url: http://127.0.0.1:5380
+technitium_api_user: admin
+technitium_install_script_url: >-
+  https://raw.githubusercontent.com/TechnitiumSoftware/DnsServer/master/DnsServerApp/install.sh
+technitium_install_script: /usr/local/sbin/install-technitium-dns

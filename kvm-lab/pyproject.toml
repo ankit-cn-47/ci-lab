@@ -1,0 +1,16 @@
+[project]
+name = "vmctl"
+version = "0.1.0"
+description = "Declarative libvirt/KVM VM provisioner using YAML or JSON"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "libvirt-python",
+    "PyYAML>=6.0,<7",
+]
+
+[project.scripts]
+vmctl = "vmctl:main"
+
+[tool.uv]
+package = true

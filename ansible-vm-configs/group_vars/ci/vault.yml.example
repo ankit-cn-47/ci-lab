@@ -1,0 +1,6 @@
+---
+# Copy this file to vault.yml, replace the values, and encrypt it with Ansible Vault.
+woodpecker_gitea_client_id: replace-with-gitea-oauth-client-id
+woodpecker_gitea_client_secret: replace-with-gitea-oauth-client-secret
+woodpecker_agent_secret: replace-with-a-random-secret
+woodpecker_grpc_secret: replace-with-a-different-random-secret

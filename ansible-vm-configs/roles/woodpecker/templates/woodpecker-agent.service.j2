@@ -1,0 +1,21 @@
+[Unit]
+Description=Woodpecker CI agent
+After=network.target docker.service woodpecker-server.service
+Requires=docker.service woodpecker-server.service
+
+[Service]
+Type=simple
+User=woodpecker
+Group=woodpecker
+EnvironmentFile=/etc/woodpecker/agent
+ExecStart=/usr/local/bin/woodpecker-agent
+Restart=always
+RestartSec=2s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths={{ woodpecker_data_dir }}
+
+[Install]
+WantedBy=multi-user.target

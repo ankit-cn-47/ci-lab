@@ -1,0 +1,46 @@
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ gitea_domain }} {{ woodpecker_domain }};
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name {{ gitea_domain }};
+
+    ssl_certificate {{ nginx_gitea_certificate }};
+    ssl_certificate_key {{ nginx_gitea_certificate_key }};
+    client_max_body_size 512m;
+
+    location / {
+        proxy_pass http://{{ gitea_http_addr }}:{{ gitea_http_port }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name {{ woodpecker_domain }};
+
+    ssl_certificate {{ nginx_woodpecker_certificate }};
+    ssl_certificate_key {{ nginx_woodpecker_certificate_key }};
+    client_max_body_size 512m;
+
+    location / {
+        proxy_pass http://{{ woodpecker_http_addr }}:{{ woodpecker_http_port }};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 3600s;
+    }
+}

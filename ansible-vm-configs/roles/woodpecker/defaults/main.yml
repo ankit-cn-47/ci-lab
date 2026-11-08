@@ -1,0 +1,11 @@
+---
+woodpecker_version: 3.19.0
+lab_domain: lab.example
+woodpecker_domain: "woodpecker.{{ lab_domain }}"
+woodpecker_host_url: "https://{{ woodpecker_domain }}/"
+woodpecker_gitea_url: "{{ gitea_root_url | regex_replace('/$', '') }}"
+woodpecker_http_addr: 127.0.0.1
+woodpecker_http_port: 8000
+woodpecker_grpc_addr: 127.0.0.1:9000
+woodpecker_data_dir: /var/lib/woodpecker
+woodpecker_max_workflows: 2

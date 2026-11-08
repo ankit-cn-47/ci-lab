@@ -1,0 +1,113 @@
+---
+- name: Require a non-placeholder CA provisioner password
+  ansible.builtin.assert:
+    that:
+      - step_ca_provisioner_password is defined
+      - step_ca_provisioner_password | length >= 32
+      - "'replace-with-' not in step_ca_provisioner_password"
+    fail_msg: >-
+      Set step_ca_provisioner_password in the encrypted
+      group_vars/all/vault.yml file before issuing service certificates.
+
+- name: Install Smallstep CLI
+  ansible.builtin.import_role:
+    name: smallstep
+  vars:
+    smallstep_packages:
+      - step-cli
+
+- name: Create Smallstep client secret directory
+  ansible.builtin.file:
+    path: /etc/step-ca
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install Smallstep provisioner password for certificate issuance
+  ansible.builtin.copy:
+    content: "{{ step_ca_provisioner_password }}\n"
+    dest: "{{ step_ca_provisioner_password_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Wait for the lab CA HTTPS endpoint
+  ansible.builtin.uri:
+    url: "{{ lab_ca_url }}/health"
+    method: GET
+    validate_certs: true
+    status_code: 200
+  register: step_ca_health
+  retries: 30
+  delay: 2
+  until: step_ca_health.status == 200
+
+- name: Check whether service certificate files exist
+  ansible.builtin.stat:
+    path: "{{ nginx_tls_certificate_dir }}/{{ item.domain }}.{{ nginx_tls_certificate_extension }}"
+  loop: "{{ step_ca_certificates }}"
+  register: step_ca_cert_stats
+
+- name: Check whether service private key files exist
+  ansible.builtin.stat:
+    path: "{{ nginx_tls_private_key_dir }}/{{ item.domain }}.{{ nginx_tls_private_key_extension }}"
+  loop: "{{ step_ca_certificates }}"
+  register: step_ca_key_stats
+
+- name: Require certificate and key state to match
+  ansible.builtin.assert:
+    that:
+      - step_ca_cert_stats.results[item].stat.exists == step_ca_key_stats.results[item].stat.exists
+    fail_msg: >-
+      Found only one of the certificate/key files for
+      {{ step_ca_certificates[item].domain }}. Resolve the partial certificate
+      state before running the CA client role.
+  loop: "{{ range(0, step_ca_certificates | length) | list }}"
+
+- name: Issue Nginx service certificates from the lab CA
+  ansible.builtin.command:
+    argv:
+      - step
+      - ca
+      - certificate
+      - "{{ item.domain }}"
+      - "{{ nginx_tls_certificate_dir }}/{{ item.domain }}.{{ nginx_tls_certificate_extension }}"
+      - "{{ nginx_tls_private_key_dir }}/{{ item.domain }}.{{ nginx_tls_private_key_extension }}"
+      - "--ca-url={{ lab_ca_url }}"
+      - "--root={{ lab_ca_root_cert_path }}"
+      - "--provisioner={{ step_ca_provisioner_name }}"
+      - "--provisioner-password-file={{ step_ca_provisioner_password_file }}"
+      - --password-file=/dev/null
+      - "--not-after=24h"
+  loop: "{{ step_ca_certificates }}"
+  loop_control:
+    index_var: certificate_index
+  when: not step_ca_cert_stats.results[certificate_index].stat.exists
+  no_log: true
+  notify:
+    - Reload Nginx systemd
+
+- name: Remove the temporary Smallstep provisioner password
+  ansible.builtin.file:
+    path: "{{ step_ca_provisioner_password_file }}"
+    state: absent
+
+- name: Install automatic renewal service for each Nginx certificate
+  ansible.builtin.template:
+    src: step-ca-renew.service.j2
+    dest: "/etc/systemd/system/step-ca-renew-{{ item.name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ step_ca_certificates }}"
+  notify: Reload Smallstep client systemd
+
+- name: Enable automatic Nginx certificate renewal
+  ansible.builtin.systemd_service:
+    name: "step-ca-renew-{{ item.name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop: "{{ step_ca_certificates }}"

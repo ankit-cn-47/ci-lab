@@ -1,0 +1,117 @@
+---
+- name: Require unique, non-placeholder Smallstep secrets
+  ansible.builtin.assert:
+    that:
+      - step_ca_key_password is defined
+      - step_ca_provisioner_password is defined
+      - step_ca_key_password | length >= 32
+      - step_ca_provisioner_password | length >= 32
+      - "'replace-with-' not in step_ca_key_password"
+      - "'replace-with-' not in step_ca_provisioner_password"
+      - step_ca_key_password != step_ca_provisioner_password
+    fail_msg: >-
+      Set distinct, unique Smallstep CA key and provisioner passwords in the
+      encrypted group_vars/all/vault.yml file.
+
+- name: Install Smallstep CA packages
+  ansible.builtin.import_role:
+    name: smallstep
+  vars:
+    smallstep_packages:
+      - step-cli
+      - step-ca
+
+- name: Create Smallstep service account
+  ansible.builtin.user:
+    name: step
+    comment: Smallstep Certificate Authority
+    home: "{{ step_ca_data_dir }}"
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: false
+
+- name: Create Smallstep CA directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ step_ca_data_dir }}"
+      owner: step
+      group: step
+      mode: "0750"
+    - path: "{{ step_ca_secrets_dir }}"
+      owner: root
+      group: step
+      mode: "0750"
+
+- name: Install Smallstep CA key password
+  ansible.builtin.copy:
+    content: "{{ step_ca_key_password }}\n"
+    dest: "{{ step_ca_password_file }}"
+    owner: root
+    group: step
+    mode: "0640"
+  no_log: true
+
+- name: Install Smallstep provisioner password
+  ansible.builtin.copy:
+    content: "{{ step_ca_provisioner_password }}\n"
+    dest: "{{ step_ca_provisioner_password_file }}"
+    owner: root
+    group: step
+    mode: "0640"
+  no_log: true
+
+- name: Initialize the Smallstep certificate authority
+  ansible.builtin.command:
+    argv:
+      - step
+      - ca
+      - init
+      - "--name={{ step_ca_name }}"
+      - "--dns={{ lab_ca_name }}"
+      - "--address={{ step_ca_listen_addr }}"
+      - "--provisioner={{ step_ca_provisioner_name }}"
+      - "--password-file={{ step_ca_password_file }}"
+      - "--provisioner-password-file={{ step_ca_provisioner_password_file }}"
+  become_user: step
+  environment:
+    STEPPATH: "{{ step_ca_data_dir }}"
+    HOME: "{{ step_ca_data_dir }}"
+  args:
+    creates: "{{ step_ca_config_file }}"
+  no_log: true
+  notify:
+    - Reload Smallstep systemd
+    - Restart Smallstep CA
+
+- name: Remove the temporary Smallstep provisioner password
+  ansible.builtin.file:
+    path: "{{ step_ca_provisioner_password_file }}"
+    state: absent
+
+- name: Install Smallstep CA systemd unit
+  ansible.builtin.template:
+    src: step-ca.service.j2
+    dest: /etc/systemd/system/step-ca.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload Smallstep systemd
+    - Restart Smallstep CA
+
+- name: Enable and start Smallstep CA
+  ansible.builtin.systemd_service:
+    name: step-ca
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Read public Smallstep root certificate
+  ansible.builtin.slurp:
+    src: "{{ step_ca_root_cert_file }}"
+  register: lab_ca_root_certificate

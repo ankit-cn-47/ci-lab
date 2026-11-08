@@ -1,0 +1,9 @@
+---
+gitea_version: 28.1.0
+lab_domain: lab.example
+gitea_domain: "gitea.{{ lab_domain }}"
+gitea_root_url: "https://{{ gitea_domain }}/"
+gitea_data_dir: /srv/gitea/data
+gitea_http_addr: 127.0.0.1
+gitea_http_port: 3000
+gitea_ssh_port: 2222

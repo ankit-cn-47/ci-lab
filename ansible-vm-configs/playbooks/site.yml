@@ -1,0 +1,38 @@
+---
+- name: Configure lab DNS and certificate authority
+  hosts: lab_dns
+  become: true
+  roles:
+    - role: technitium_dns
+      tags: [dns]
+    - role: step_ca_server
+      tags: [ca]
+
+- name: Trust the lab CA on VMs and the hypervisor
+  hosts: lab_nodes
+  become: true
+  roles:
+    - role: ca_trust
+      tags: [ca, ca_trust]
+
+- name: Route lab DNS lookups from the hypervisor
+  hosts: hypervisor
+  become: true
+  roles:
+    - role: lab_dns_client
+      tags: [dns, dns_client]
+
+- name: Configure the CI virtual machine
+  hosts: ci
+  become: true
+  roles:
+    - role: docker
+      tags: [docker]
+    - role: gitea
+      tags: [gitea]
+    - role: woodpecker
+      tags: [woodpecker]
+    - role: step_ca_client
+      tags: [certificates, nginx]
+    - role: nginx
+      tags: [nginx]

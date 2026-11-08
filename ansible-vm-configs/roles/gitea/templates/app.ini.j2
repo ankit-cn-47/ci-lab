@@ -1,0 +1,34 @@
+APP_NAME = Gitea
+RUN_USER = git
+RUN_MODE = prod
+
+[database]
+DB_TYPE = sqlite3
+PATH = {{ gitea_data_dir }}/gitea/gitea.db
+LOG_SQL = false
+
+[repository]
+ROOT = {{ gitea_data_dir }}/git/repositories
+
+[server]
+DOMAIN = {{ gitea_domain }}
+ROOT_URL = {{ gitea_root_url }}
+HTTP_ADDR = {{ gitea_http_addr }}
+HTTP_PORT = {{ gitea_http_port }}
+SSH_DOMAIN = {{ gitea_domain }}
+SSH_PORT = {{ gitea_ssh_port }}
+SSH_LISTEN_PORT = {{ gitea_ssh_port }}
+START_SSH_SERVER = true
+LFS_START_SERVER = true
+APP_DATA_PATH = {{ gitea_data_dir }}/gitea
+
+[lfs]
+PATH = {{ gitea_data_dir }}/gitea/lfs
+
+[service]
+DISABLE_REGISTRATION = true
+
+[log]
+MODE = console
+LEVEL = info
+ROOT_PATH = {{ gitea_data_dir }}/gitea/log

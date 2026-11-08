@@ -1,0 +1,25 @@
+---
+lab_domain: lab.home.arpa
+lab_dns_ip: 10.10.10.2
+lab_dns_name: "lab-dns.{{ lab_domain }}"
+lab_ca_name: "ca.{{ lab_domain }}"
+lab_ca_url: "https://{{ lab_ca_name }}:9000"
+lab_ca_root_cert_path: /usr/local/share/ca-certificates/lab-root-ca.crt
+
+lab_dns_records:
+  - name: "{{ lab_dns_name }}"
+    ip: "{{ lab_dns_ip }}"
+  - name: "{{ lab_ca_name }}"
+    ip: "{{ lab_dns_ip }}"
+  - name: "lab-ci.{{ lab_domain }}"
+    ip: 10.10.10.10
+  - name: "gitea.{{ lab_domain }}"
+    ip: 10.10.10.10
+  - name: "woodpecker.{{ lab_domain }}"
+    ip: 10.10.10.10
+  - name: "lab-harbor.{{ lab_domain }}"
+    ip: 10.10.10.20
+  - name: "lab-observability.{{ lab_domain }}"
+    ip: 10.10.10.30
+  - name: "lab-sonarqube.{{ lab_domain }}"
+    ip: 10.10.10.40

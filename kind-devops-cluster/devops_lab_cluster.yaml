@@ -1,0 +1,34 @@
+# kind-lab.yaml
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+
+name: devops-lab
+
+nodes:
+
+  # Kubernetes control plane
+  - role: control-plane
+
+    # Expose ingress to the Zorin host
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 8443
+        protocol: TCP
+
+  # Application worker
+  - role: worker
+
+  # Application worker
+  - role: worker
+
+  # Application/observability worker
+  - role: worker
+
+
+  # kind create cluster \
+  # --config kind-lab.yaml \
+  # --name devops-lab

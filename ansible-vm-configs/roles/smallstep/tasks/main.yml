@@ -1,0 +1,45 @@
+---
+- name: Install prerequisites for the Smallstep package repository
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create apt keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install Smallstep repository signing key
+  ansible.builtin.get_url:
+    url: https://packages.smallstep.com/keys/apt/repo-signing-key.gpg
+    dest: /etc/apt/keyrings/smallstep.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure Smallstep apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/smallstep.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: https://packages.smallstep.com/stable/debian
+      Suites: debs
+      Components: main
+      Signed-By: /etc/apt/keyrings/smallstep.asc
+
+- name: Install Smallstep packages
+  ansible.builtin.apt:
+    name: "{{ smallstep_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600

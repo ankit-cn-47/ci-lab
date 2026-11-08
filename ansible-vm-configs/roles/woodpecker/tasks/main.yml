@@ -1,0 +1,198 @@
+- name: Require Woodpecker secrets
+  ansible.builtin.assert:
+    that:
+      - woodpecker_gitea_client_id is defined
+      - woodpecker_gitea_client_secret is defined
+      - woodpecker_agent_secret is defined
+      - woodpecker_grpc_secret is defined
+      - woodpecker_gitea_client_id | default('') | length > 0
+      - woodpecker_gitea_client_secret | default('') | length > 0
+      - woodpecker_agent_secret | default('') | length >= 32
+      - woodpecker_grpc_secret | default('') | length >= 32
+    fail_msg: >-
+      Set Woodpecker OAuth credentials and distinct, random agent and gRPC
+      secrets in the Ansible Vault file before deploying this role.
+
+- name: Create Woodpecker service account
+  ansible.builtin.user:
+    name: woodpecker
+    comment: Woodpecker service account
+    home: "{{ woodpecker_data_dir }}"
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: false
+    groups:
+      - docker
+    append: true
+
+- name: Create Woodpecker directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: woodpecker
+    group: woodpecker
+    mode: "0750"
+  loop:
+    - "{{ woodpecker_data_dir }}"
+    - /etc/woodpecker
+
+- name: Download Woodpecker release checksums
+  ansible.builtin.get_url:
+    url: >-
+      https://github.com/woodpecker-ci/woodpecker/releases/download/v{{
+      woodpecker_version }}/checksums.txt
+    dest: "/tmp/woodpecker-checksums-{{ woodpecker_version }}.txt"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Read Woodpecker release checksums
+  ansible.builtin.slurp:
+    src: "/tmp/woodpecker-checksums-{{ woodpecker_version }}.txt"
+  register: woodpecker_checksums_file
+
+- name: Set Woodpecker binary checksums
+  ansible.builtin.set_fact:
+    woodpecker_server_checksum: >-
+      {{ woodpecker_checksums_file.content | b64decode
+      | regex_findall('(?m)^([0-9a-f]{64})\s+woodpecker-server_linux_'
+      ~ woodpecker_arch ~ '\.tar\.gz$') | first }}
+    woodpecker_agent_checksum: >-
+      {{ woodpecker_checksums_file.content | b64decode
+      | regex_findall('(?m)^([0-9a-f]{64})\s+woodpecker-agent_linux_'
+      ~ woodpecker_arch ~ '\.tar\.gz$') | first }}
+
+- name: Validate Woodpecker binary checksums exist in release manifest
+  ansible.builtin.assert:
+    that:
+      - woodpecker_server_checksum | length == 64
+      - woodpecker_agent_checksum | length == 64
+    fail_msg: >-
+      Could not find checksums for the Woodpecker binaries matching the
+      configured release and architecture.
+
+- name: Download Woodpecker server archive
+  ansible.builtin.get_url:
+    url: >-
+      https://github.com/woodpecker-ci/woodpecker/releases/download/v{{
+      woodpecker_version }}/woodpecker-server_linux_{{ woodpecker_arch }}.tar.gz
+    dest: "/tmp/woodpecker-server-{{ woodpecker_version }}.tar.gz"
+    owner: root
+    group: root
+    mode: "0644"
+    checksum: "sha256:{{ woodpecker_server_checksum }}"
+
+- name: Download Woodpecker agent archive
+  ansible.builtin.get_url:
+    url: >-
+      https://github.com/woodpecker-ci/woodpecker/releases/download/v{{
+      woodpecker_version }}/woodpecker-agent_linux_{{ woodpecker_arch }}.tar.gz
+    dest: "/tmp/woodpecker-agent-{{ woodpecker_version }}.tar.gz"
+    owner: root
+    group: root
+    mode: "0644"
+    checksum: "sha256:{{ woodpecker_agent_checksum }}"
+
+- name: Create versioned Woodpecker binary directory
+  ansible.builtin.file:
+    path: "/usr/local/lib/woodpecker/{{ woodpecker_version }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Extract Woodpecker server archive
+  ansible.builtin.unarchive:
+    src: "/tmp/woodpecker-server-{{ woodpecker_version }}.tar.gz"
+    dest: "/usr/local/lib/woodpecker/{{ woodpecker_version }}"
+    remote_src: true
+    creates: "/usr/local/lib/woodpecker/{{ woodpecker_version }}/woodpecker-server"
+  notify:
+    - Restart Woodpecker server
+    - Restart Woodpecker agent
+
+- name: Extract Woodpecker agent archive
+  ansible.builtin.unarchive:
+    src: "/tmp/woodpecker-agent-{{ woodpecker_version }}.tar.gz"
+    dest: "/usr/local/lib/woodpecker/{{ woodpecker_version }}"
+    remote_src: true
+    creates: "/usr/local/lib/woodpecker/{{ woodpecker_version }}/woodpecker-agent"
+  notify:
+    - Restart Woodpecker server
+    - Restart Woodpecker agent
+
+- name: Set Woodpecker binary permissions
+  ansible.builtin.file:
+    path: "/usr/local/lib/woodpecker/{{ woodpecker_version }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - woodpecker-server
+    - woodpecker-agent
+
+- name: Link Woodpecker server binary
+  ansible.builtin.file:
+    src: "/usr/local/lib/woodpecker/{{ woodpecker_version }}/woodpecker-server"
+    dest: /usr/local/bin/woodpecker-server
+    state: link
+  notify: Restart Woodpecker server
+
+- name: Link Woodpecker agent binary
+  ansible.builtin.file:
+    src: "/usr/local/lib/woodpecker/{{ woodpecker_version }}/woodpecker-agent"
+    dest: /usr/local/bin/woodpecker-agent
+    state: link
+  notify: Restart Woodpecker agent
+
+- name: Configure Woodpecker server environment
+  ansible.builtin.template:
+    src: server.env.j2
+    dest: /etc/woodpecker/server
+    owner: root
+    group: woodpecker
+    mode: "0640"
+  no_log: true
+  notify: Restart Woodpecker server
+
+- name: Configure Woodpecker agent environment
+  ansible.builtin.template:
+    src: agent.env.j2
+    dest: /etc/woodpecker/agent
+    owner: root
+    group: woodpecker
+    mode: "0640"
+  no_log: true
+  notify: Restart Woodpecker agent
+
+- name: Install Woodpecker server systemd unit
+  ansible.builtin.template:
+    src: woodpecker-server.service.j2
+    dest: /etc/systemd/system/woodpecker-server.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload Woodpecker systemd
+    - Restart Woodpecker server
+
+- name: Install Woodpecker agent systemd unit
+  ansible.builtin.template:
+    src: woodpecker-agent.service.j2
+    dest: /etc/systemd/system/woodpecker-agent.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload Woodpecker systemd
+    - Restart Woodpecker agent
+
+- name: Enable and start Woodpecker services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - woodpecker-server
+    - woodpecker-agent

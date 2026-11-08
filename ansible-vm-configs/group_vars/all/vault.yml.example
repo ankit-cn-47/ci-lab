@@ -1,0 +1,5 @@
+---
+# Copy to group_vars/all/vault.yml and encrypt with Ansible Vault.
+technitium_admin_password: replace-with-a-unique-long-password
+step_ca_key_password: replace-with-a-unique-long-password
+step_ca_provisioner_password: replace-with-a-different-unique-long-password

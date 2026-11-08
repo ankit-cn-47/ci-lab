@@ -1,0 +1,14 @@
+---
+- name: Reload Woodpecker systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart Woodpecker server
+  ansible.builtin.systemd_service:
+    name: woodpecker-server
+    state: restarted
+
+- name: Restart Woodpecker agent
+  ansible.builtin.systemd_service:
+    name: woodpecker-agent
+    state: restarted

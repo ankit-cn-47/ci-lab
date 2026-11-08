@@ -1,0 +1,5 @@
+---
+woodpecker_arch_map:
+  x86_64: amd64
+  aarch64: arm64
+woodpecker_arch: "{{ woodpecker_arch_map[ansible_architecture] }}"

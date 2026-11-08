@@ -1,0 +1,10 @@
+---
+step_ca_name: Lab Internal CA
+step_ca_provisioner_name: lab-ansible
+step_ca_listen_addr: ":9000"
+step_ca_data_dir: /var/lib/step-ca
+step_ca_secrets_dir: /etc/step-ca/secrets
+step_ca_password_file: /etc/step-ca/secrets/ca-password
+step_ca_provisioner_password_file: /etc/step-ca/secrets/provisioner-password
+step_ca_config_file: "{{ step_ca_data_dir }}/config/ca.json"
+step_ca_root_cert_file: "{{ step_ca_data_dir }}/certs/root_ca.crt"

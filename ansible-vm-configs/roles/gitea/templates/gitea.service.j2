@@ -1,0 +1,21 @@
+[Unit]
+Description=Gitea
+After=network.target
+
+[Service]
+Type=simple
+User=git
+Group=git
+WorkingDirectory={{ gitea_data_dir }}
+ExecStart=/usr/local/bin/gitea web --config /etc/gitea/app.ini
+Restart=always
+RestartSec=2s
+Environment=USER=git HOME=/home/git
+CapabilityBoundingSet=
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths={{ gitea_data_dir }}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,2 @@
+[console_scripts]
+vmctl = vmctl:main

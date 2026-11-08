@@ -1,0 +1,3 @@
+---
+smallstep_packages:
+  - step-cli

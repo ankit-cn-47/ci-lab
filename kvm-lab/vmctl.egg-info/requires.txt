@@ -1,0 +1,2 @@
+libvirt-python
+PyYAML<7,>=6.0
